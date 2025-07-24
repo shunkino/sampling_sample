@@ -1,6 +1,7 @@
 import sys
 import json
 import logging
+import select
 
 # Logging configuration
 logging.basicConfig(filename='mcp_server.log', level=logging.INFO, 
@@ -13,30 +14,35 @@ class MCPServer:
         self.pending_tool_requests = {}  # Store pending tool requests
 
     def run(self):
-        """Main server loop"""
+        """Main server loop with efficient input handling"""
         logging.info("Server started. Waiting for requests...")
         while True:
             try:
-                request = self._read_message()
-                if request is None:
-                    continue
+                # Use select to wait for input availability (efficient, non-blocking)
+                if self._wait_for_input():
+                    request = self._read_message()
+                    if request is None:
+                        continue
 
-                method = request.get("method")
-                request_id = request.get("id")
-                
-                if method:
-                    logging.info(f"Received request: {request}")
-                    handler = self.get_handler(method)
-                    if handler:
-                        handler(request)
-                    elif "id" in request:
-                        logging.warning(f"No handler for method: {method}")
-                elif request_id in self.sampling_requests:
-                    logging.info(f"Received sampling response: {request}")
-                    self.handle_sampling_response(request)
-                else:
-                    logging.warning(f"Received a response with no method and unknown id: {request}")
+                    method = request.get("method")
+                    request_id = request.get("id")
+                    
+                    if method:
+                        logging.info(f"Received request: {request}")
+                        handler = self.get_handler(method)
+                        if handler:
+                            handler(request)
+                        elif "id" in request:
+                            logging.warning(f"No handler for method: {method}")
+                    elif request_id in self.sampling_requests:
+                        logging.info(f"Received sampling response: {request}")
+                        self.handle_sampling_response(request)
+                    else:
+                        logging.warning(f"Received a response with no method and unknown id: {request}")
 
+            except KeyboardInterrupt:
+                logging.info("Server shutdown requested")
+                break
             except Exception as e:
                 logging.error(f"An error occurred: {e}", exc_info=True)
 
@@ -63,18 +69,31 @@ class MCPServer:
         sys.stdout.write(response_str)
         sys.stdout.flush()
 
+    def _wait_for_input(self, timeout=1.0):
+        """Wait for input to be available on stdin using select"""
+        try:
+            # Use select to wait for input with timeout
+            ready, _, _ = select.select([sys.stdin], [], [], timeout)
+            return bool(ready)
+        except select.error:
+            # Fallback for systems where select doesn't work with stdin
+            return True
+
     def _read_message(self):
         """Read JSON-RPC message from standard input"""
-        line = sys.stdin.readline()
-        if not line:
-            return None
-        
-        logging.info(f"RECV: {line.strip()}")
-        
         try:
+            line = sys.stdin.readline()
+            if not line:
+                return None
+            
+            logging.info(f"RECV: {line.strip()}")
+            
             return json.loads(line)
         except json.JSONDecodeError as e:
             logging.error(f"Failed to parse JSON: {line}. Error: {e}")
+            return None
+        except EOFError:
+            logging.info("EOF received, client disconnected")
             return None
 
     def handle_initialize(self, request):
