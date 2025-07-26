@@ -108,9 +108,7 @@ class MCPServer:
                     "version": "0.0.1"
                 },
                 "capabilities": {
-                    "tools": { "listChanged": False },
-                    "prompts": None,
-                    "resources": None,
+                    "tools": None,
                     "sampling": None
                 }
             }
