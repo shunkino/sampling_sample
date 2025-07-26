@@ -108,8 +108,8 @@ class MCPServer:
                     "version": "0.0.1"
                 },
                 "capabilities": {
-                    "tools": None,
-                    "sampling": None
+                    "tools": {},
+                    "sampling": {}
                 }
             }
         }
